@@ -138,8 +138,27 @@ class ToolFailure(BaseModel):
     recovered: bool = False
 
 
+def merge_findings(
+    left: list["LaneFindings"] | None, right: list["LaneFindings"] | None
+) -> list["LaneFindings"]:
+    """
+    Reducer for the parallel Research fan-in. Last write per lane_id wins.
+
+    Plain `operator.add` would work for the initial fan-out, but Human Gate lets the
+    human send a run backwards to re-run one lane — and with `add` the re-run would
+    APPEND a second LaneFindings for that lane, leaving Skeptic to judge both the
+    stale and the fresh copy. Keying by lane_id makes a re-run replace instead.
+
+    Concurrent writes stay safe: each fanned-out lane writes a distinct lane_id.
+    """
+    merged: dict[str, LaneFindings] = {f.lane_id: f for f in (left or [])}
+    for f in right or []:
+        merged[f.lane_id] = f
+    return list(merged.values())
+
+
 class LaneFindings(BaseModel):
-    """One Research node's output. N of these fan back in via `operator.add`."""
+    """One Research node's output. N of these fan back in via `merge_findings`."""
 
     lane_id: str
     lane_name: str
@@ -252,10 +271,12 @@ class RunState(TypedDict, total=False):
     """
     LangGraph's shared state, threaded through every node.
 
-    CRITICAL — the two `operator.add` reducers below are what make the parallel
-    Research fan-out work. Nodes spawned via `Send` write concurrently; without a
-    reducer LangGraph raises on the concurrent write. Do not "simplify" them to
-    plain lists.
+    CRITICAL — the two reducers below are what make the parallel Research fan-out
+    work. Nodes spawned via `Send` write concurrently; without a reducer LangGraph
+    raises on the concurrent write. Do not "simplify" them to plain lists.
+
+    They differ on purpose: `findings` replaces per lane (a re-run must supersede the
+    stale result), `events` appends (it's an audit trail — duplicates are the point).
 
     Nodes return a PARTIAL dict (only the keys they set), never the whole state.
     """
@@ -274,8 +295,8 @@ class RunState(TypedDict, total=False):
     # Plan
     lanes: list[ResearchLane]
 
-    # Research — parallel fan-in, MUST use the reducer
-    findings: Annotated[list[LaneFindings], operator.add]
+    # Research — parallel fan-in, MUST use the reducer. Replaces per lane_id.
+    findings: Annotated[list[LaneFindings], merge_findings]
 
     # Skeptic / Merge
     skeptic_report: SkepticReport | None
@@ -312,6 +333,7 @@ __all__ = [
     "Claim",
     "ToolFailure",
     "LaneFindings",
+    "merge_findings",
     "Verdict",
     "JudgedClaim",
     "SkepticReport",

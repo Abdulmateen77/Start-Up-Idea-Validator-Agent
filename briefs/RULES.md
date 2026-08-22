@@ -5,6 +5,29 @@ Read this, then `CLAUDE.md`, then `docs/ARCHITECTURE.md`, then your own brief.
 
 ---
 
+## 0. Environment — read before you run anything
+
+**Use the project venv at `.venv/`. It already exists, created with Python 3.13.**
+
+```
+.venv/Scripts/python.exe -m pytest        # Windows
+.venv/Scripts/python.exe -m pip install   # only with Lead approval
+```
+
+Two traps, both already hit once:
+
+- **Bare `python` on PATH is NOT this project.** On this machine it resolves to
+  `AppData\Local\hermes\hermes-agent\venv\python.exe` — the Hermes *agent's own*
+  runtime, which has no pip. Installing there pollutes another agent's environment
+  and your imports will fail in confusing ways. Always use `.venv/Scripts/python.exe`.
+- **Do not create your own venv.** All sessions share one working tree; a second
+  environment means your tests pass against different package versions than the
+  Lead's, and "works for me" becomes unfalsifiable.
+
+Dependencies live in `requirements.txt` (Lead-owned). Need a new one? Report it.
+
+---
+
 ## 1. Stay in your lane (literally)
 
 - Create **new files** in **your assigned folders only**. Your brief names them.

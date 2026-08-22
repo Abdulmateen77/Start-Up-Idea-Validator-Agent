@@ -3,7 +3,23 @@
 logs/
 credentials.json
 token.json
+
+# Python
 __pycache__/
 *.pyc
 .venv/
 venv/
+.pytest_cache/
+
+# Runtime state — LangGraph checkpoints + the run index. Regenerable, and can
+# contain full idea/research content.
+*.sqlite
+*.sqlite-journal
+iva.sqlite*
+
+# Frontend
+node_modules/
+.next/
+out/
+next-env.d.ts
+tsconfig.tsbuildinfo
