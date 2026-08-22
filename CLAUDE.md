@@ -60,10 +60,15 @@ Decided (2026-08-22):
     calls — those go straight through the model client. LangChain is only pulled
     in where LangGraph's prebuilt agent helpers need a LangChain-wrapped model (e.g.
     a Research lane agent that loops on tool calls itself).
-- **LLM: Google Gemini** — via `langchain-google-genai` (`ChatGoogleGenerativeAI`) so
-  the same model object works both for direct calls and inside LangGraph's prebuilt
-  agent helpers. Key: `GEMINI_API_KEY`. All nodes use structured output (Pydantic
-  schema → `with_structured_output()`), never free-text parsing.
+- **LLM: Gemini 3.7 Flash** (`gemini-3.7-flash`, GA 2026-08-13) via the
+  **`google-genai` SDK's Interactions API** (`client.interactions.create`), wrapped in
+  `graph/llm.py`. Key: `GEMINI_API_KEY`. All nodes use structured output (Pydantic
+  schema → validated instance), never free-text parsing.
+  - LangChain is **not** used as a model wrapper. LangGraph orchestrates plain Python
+    functions, so the extra layer bought nothing and lagged a model this new.
+  - 3.7 removes `temperature`/`top_p`/`top_k`; reasoning effort is `thinking_level`
+    (`"low"|"medium"|"high"`). Multi-turn is server-side via `previous_interaction_id`.
+  - Response schemas may not contain union types other than `Optional`.
 - **Firecrawl** — web search + scrape/extract tool for the Research lanes. Chosen
   over Tavily: same "give an LLM agent clean, citation-ready content" niche, but
   Firecrawl also covers full-page scrape/crawl in one tool, reducing the need for a

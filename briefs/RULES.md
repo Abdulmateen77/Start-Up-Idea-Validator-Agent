@@ -34,11 +34,20 @@ Never return the whole state. Never mutate the input state in place.
 ## 4. Structured output only
 
 ```python
-result = get_llm().with_structured_output(ResearchPlan).invoke(prompt)   # ✅
-result = json.loads(get_llm().invoke(prompt).content)                     # ❌
+from graph.llm import generate_structured
+
+result = generate_structured(prompt, ResearchPlan)          # ✅ validated instance
+result = json.loads(some_raw_model_reply)                    # ❌
 ```
 
 No regex over model output. No free-text parsing. No "the model usually returns JSON."
+
+Gemini 3.7 specifics that will bite you if ignored:
+
+- **`temperature` / `top_p` / `top_k` are removed in 3.7.** Passing them errors. Use
+  `thinking_level="low"|"medium"|"high"` instead — that's the reasoning-effort dial.
+- **Response schemas may not contain union types** other than `Optional`. No `A | B`.
+- Do not build your own `genai.Client`. Import from `graph.llm`.
 
 ## 5. Fail loudly
 

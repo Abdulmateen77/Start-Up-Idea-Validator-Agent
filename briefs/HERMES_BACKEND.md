@@ -156,8 +156,9 @@ Follow `workflows/03_research_lane.md` exactly. Specifically:
 6. **Do not editorialize on whether the idea is good.** Report what was found. Verdicts
    are Merge's job, after Skeptic filters.
 
-Use `get_llm().with_structured_output(...)` from `graph.llm` for turning scraped text
-into `Claim` objects. Never parse free text.
+Use `generate_structured(prompt, SomeSchema)` from `graph.llm` for turning scraped
+text into `Claim` objects — `thinking_level="low"` is right for extraction. Never
+parse free text.
 
 ## Task 6 — tests
 
@@ -168,7 +169,8 @@ into `Claim` objects. Never parse free text.
   touches the network.
 - `test_tools_logger.py` — round-trip an event, assert append-only across two writes,
   assert `track` logs `ok=False` and re-raises on exception.
-- `test_agents_research.py` — mock `get_llm` **and** the Firecrawl client. Assert:
+- `test_agents_research.py` — mock `graph.llm.generate_structured` **and** the
+  Firecrawl client. Assert:
   returns `{"findings": [...], "events": [...]}` with `findings` a **single-item
   list**; `no_evidence_found=True` when search returns nothing; `tool_failures`
   populated when the client raises; **a lane with `archetype=OTHER` researches
@@ -189,4 +191,4 @@ into `Claim` objects. Never parse free text.
 
 - Add or change anything in `graph/state.py` (you may not — report instead).
 - Run a live Firecrawl or Gemini call (**costs money**).
-- Add a dependency beyond: `firecrawl-py`, `pydantic`, `langchain-google-genai`, `pytest`.
+- Add a dependency beyond what's already in `requirements.txt`.

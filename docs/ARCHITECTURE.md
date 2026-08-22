@@ -132,12 +132,16 @@ lane to exist.
 
 ```python
 from graph.state import RunState, IdeaBrief, ResearchLane, ...  # all contracts
-from graph.llm import get_llm, FAST_MODEL                        # Gemini factory
+from graph.llm import generate_structured                        # single-shot call
+from graph.llm import converse_structured                        # multi-turn (Intake only)
 ```
 
-- **One LLM factory.** Do not construct `ChatGoogleGenerativeAI` yourself.
-- **Structured output always.** `get_llm().with_structured_output(SomeModel)`.
-  No free-text parsing, no regex over model output, no `json.loads` on a raw reply.
+- **One LLM client.** Do not construct `genai.Client` yourself.
+- **Structured output always.** `generate_structured(prompt, SomeModel)` returns a
+  validated instance. No free-text parsing, no regex, no `json.loads` on a raw reply.
+- **Gemini 3.7 Flash via the Interactions API.** `generate_content` is legacy;
+  `temperature`/`top_p`/`top_k` are removed — use `thinking_level`
+  (`"low"|"medium"|"high"`). Response schemas may not use unions except `Optional`.
 - **One logging helper** (`tools/run_logger.py`, Hermes builds it). Once it exists,
   every node uses it to build its `AgentEvent`.
 

@@ -66,7 +66,7 @@ mines forums, and so on. Two rules:
   actually needs and tag it `OTHER` if nothing fits. Never distort a lane's question
   to make it match an archetype — the archetype serves the lane, not the reverse.
 
-Use `get_llm().with_structured_output(ResearchPlan)`.
+Use `generate_structured(prompt, ResearchPlan)` from `graph.llm`.
 
 ## Task 2 — `agents/skeptic.py`
 
@@ -123,8 +123,11 @@ Follow `workflows/05_merge_recommendation.md`. One page, readable in under a min
 
 ## Task 4 — tests
 
-Mock `graph.llm.get_llm` in all three. You are testing **wiring and contract
-compliance**, not model quality.
+Mock `graph.llm.generate_structured` in all three. You are testing **wiring and
+contract compliance**, not model quality.
+
+Skeptic and Merge should pass `thinking_level="high"` — adversarial review and
+synthesis are exactly the work that dial exists for.
 
 - `test_agents_planner.py` — returns `{"lanes", "stage", "events"}`; `events` is a
   list; handles a 2-lane and a 5-lane plan without special-casing; a lane tagged

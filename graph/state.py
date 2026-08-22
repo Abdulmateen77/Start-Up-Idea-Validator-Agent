@@ -267,6 +267,9 @@ class RunState(TypedDict, total=False):
     raw_idea: str
     intake_turns: list[IntakeTurn]
     brief: IdeaBrief | None
+    # Gemini 3.7 keeps conversation history server-side; this is the handle that lets
+    # Intake resume its thread across an interrupt instead of resending the transcript.
+    intake_interaction_id: str | None
 
     # Plan
     lanes: list[ResearchLane]
