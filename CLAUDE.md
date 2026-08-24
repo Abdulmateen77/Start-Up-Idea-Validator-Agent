@@ -157,14 +157,18 @@ Four build sessions run concurrently. **Claude is the Lead**: it owns the contra
 and the wiring, writes each session's brief, and merges their work. The human
 approves every task assignment before a build starts.
 
-Hermes runs **two sessions** — same agent name, zero shared files.
+Hermes runs **three sessions** — same agent name, zero shared files.
 
 | Session | Half of the project | Owns (creates) |
 |---|---|---|
 | **Lead** (Claude) | Contracts, wiring, human-in-the-loop | `graph/`, `api/`, `agents/intake.py`, `agents/human_gate.py`, `briefs/`, `docs/` |
 | **Hermes · backend** | Evidence | `tools/*`, `agents/research.py`, its tests |
 | **Hermes · frontend** | UI | `frontend/**` — no Python, ever |
-| **Antigravity** | Reasoning | `agents/planner.py`, `agents/skeptic.py`, `agents/merge.py`, `agents/prompts/`, its tests |
+| **Hermes · reasoning** | Reasoning | `agents/planner.py`, `agents/skeptic.py`, `agents/merge.py`, `agents/prompts/`, its tests |
+
+The reasoning half was first assigned to a separate **Antigravity** session that
+delivered nothing; it was reassigned to a third Hermes session. Ownership boundaries
+are unchanged — only the executor.
 
 The three rules that make parallelism actually work:
 

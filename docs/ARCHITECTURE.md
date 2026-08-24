@@ -47,21 +47,25 @@ disagree, the brief wins for scope, this file wins for interfaces.
 
 ## Ownership — who writes what
 
-Four build sessions run in parallel. Hermes runs **two** — they share an agent name
+Four build sessions run in parallel. Hermes runs **three** — they share an agent name
 but share no files.
 
 | Session | Creates | Must never touch |
 |---|---|---|
 | **Lead** | `graph/`, `api/`, `agents/intake.py`, `agents/human_gate.py`, `briefs/`, `docs/` | — |
-| **Hermes · backend** | `tools/*`, `agents/research.py`, `tests/test_tools_*.py`, `tests/test_agents_research.py` | `graph/`, `api/`, `frontend/`, `agents/` except `research.py` |
-| **Hermes · frontend** | `frontend/**` — the entire Next.js app | everything outside `frontend/` — no `.py` files at all |
-| **Antigravity** | `agents/planner.py`, `agents/skeptic.py`, `agents/merge.py`, `agents/prompts/`, `tests/test_agents_*.py` | `graph/`, `api/`, `tools/`, `frontend/`, `agents/research.py` |
+| **Hermes · backend** ✅ | `tools/*`, `agents/research.py`, `tests/test_tools_*.py`, `tests/test_agents_research.py` | `graph/`, `api/`, `frontend/`, `agents/` except `research.py` |
+| **Hermes · frontend** ✅ | `frontend/**` — the entire Next.js app | everything outside `frontend/` — no `.py` files at all |
+| **Hermes · reasoning** | `agents/planner.py`, `agents/skeptic.py`, `agents/merge.py`, `agents/prompts/`, `tests/test_agents_{planner,skeptic,merge}.py` | `graph/`, `api/`, `tools/`, `frontend/`, `agents/research.py`, `agents/intake.py`, `agents/human_gate.py` |
 
 Split rationale: Hermes-backend owns the **evidence half** (tools + the one node that
-calls them), Antigravity owns the **reasoning half** (three pure-reasoning nodes, no
-tool calls, no interrupts), Hermes-frontend owns the **entire UI** and no Python.
+calls them), Hermes-reasoning owns the **reasoning half** (three pure-reasoning nodes,
+no tool calls, no interrupts), Hermes-frontend owns the **entire UI** and no Python.
 Lead owns everything shared plus the two human-in-the-loop nodes — those are the ones
 most likely to force a state-schema change, and the Lead owns the schema.
+
+> The reasoning half was originally assigned to a separate **Antigravity** session,
+> which produced nothing at all and was reassigned. The split itself is unchanged —
+> only who executes it.
 
 **Two frozen contracts, two audiences.** `graph/state.py` is the contract for the
 Python sessions. `docs/API_CONTRACT.md` is the contract for the frontend session —
