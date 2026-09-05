@@ -96,9 +96,12 @@ def skeptic_node(state: RunState) -> dict:
     # reads: state["findings"], state["brief"], state["lanes"]
     # returns: {"skeptic_report": SkepticReport(...), "stage": ..., "events": [...]}
 
-# agents/merge.py         — Antigravity
+# agents/merge.py         — Hermes reasoning
 def merge_node(state: RunState) -> dict:
-    # reads: state["skeptic_report"], state["brief"]
+    # reads: state["skeptic_report"], state["brief"], state["lanes"]
+    #   (lanes is read ONLY to resolve lane_id -> human-readable name for the prompt —
+    #   Claim only carries lane_id, so without this FindingGroup.lane_name would come
+    #   back as a slug like "competitors" instead of "Competitors")
     # returns: {"recommendation": Recommendation(...), "stage": ..., "events": [...]}
 
 # agents/human_gate.py    — Lead
