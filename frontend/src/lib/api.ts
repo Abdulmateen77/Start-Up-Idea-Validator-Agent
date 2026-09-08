@@ -15,6 +15,17 @@ function getBaseUrl(): string {
   return "/api";
 }
 
+/**
+ * True when this build talks to the real FastAPI backend rather than the local
+ * mock route handlers. Mock-only dev affordances (the scenario switcher) must be
+ * hidden in that case — leaving them visible makes a live deployment look like a
+ * test harness, and clicking one would inject fake runs alongside real ones.
+ */
+export function isLiveBackend(): boolean {
+  const envBase = process.env.NEXT_PUBLIC_API_BASE;
+  return Boolean(envBase && envBase.trim() !== "");
+}
+
 export class ApiError extends Error {
   constructor(public status: number, public detail: string) {
     super(`API Error ${status}: ${detail}`);

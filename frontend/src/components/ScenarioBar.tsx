@@ -4,7 +4,7 @@ import React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Beaker, RotateCcw, Sparkles } from "lucide-react";
-import { resetMockRuns } from "@/lib/api";
+import { isLiveBackend, resetMockRuns } from "@/lib/api";
 
 const SCENARIOS = [
   {
@@ -65,6 +65,13 @@ const SCENARIOS = [
 
 export function ScenarioBar() {
   const pathname = usePathname();
+
+  // Mock-only affordance. Against a real backend these scenarios are meaningless
+  // (and would inject fake runs next to real ones), so the bar hides itself
+  // rather than every caller having to remember to guard it.
+  if (isLiveBackend()) {
+    return null;
+  }
 
   const handleResetPresets = async () => {
     try {
