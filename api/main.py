@@ -16,15 +16,27 @@ import uuid
 from contextlib import asynccontextmanager
 from typing import Any, Literal
 
-from fastapi import FastAPI, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-from sse_starlette.sse import EventSourceResponse
+from dotenv import load_dotenv
 
-from api import store
-from api.views import RunView, to_run_view, to_summary
-from graph.build import build_graph, open_checkpointer
-from graph.state import Stage
+# Load .env BEFORE importing anything that reads configuration, so GEMINI_API_KEY
+# and FIRECRAWL_API_KEY are actually present in os.environ. Without this every run
+# dies at the first node with "GEMINI_API_KEY is not set" even though .env is
+# correct — the file is not read automatically, and the tests never caught it
+# because they mock the LLM and Firecrawl entirely.
+#
+# Deliberately done at the entrypoint rather than inside graph/llm.py: tests must
+# stay hermetic and must never silently pick up real credentials from disk.
+load_dotenv()
+
+from fastapi import FastAPI, HTTPException  # noqa: E402
+from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
+from pydantic import BaseModel  # noqa: E402
+from sse_starlette.sse import EventSourceResponse  # noqa: E402
+
+from api import store  # noqa: E402
+from api.views import RunView, to_run_view, to_summary  # noqa: E402
+from graph.build import build_graph, open_checkpointer  # noqa: E402
+from graph.state import Stage  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Request bodies
@@ -103,6 +115,16 @@ async def _advance(run_id: str, payload: Any) -> None:
     def _run() -> None:
         try:
             _graph().invoke(payload, _config(run_id))
+        except Exception as exc:
+            # Record the failure INTO the checkpoint. A node that raises leaves its
+            # pending next-node behind, which derive_status reads as "running" — so
+            # without this the client polls a dead run forever instead of being told
+            # what broke. Then re-raise so the caller still gets a 500.
+            _graph().update_state(
+                _config(run_id),
+                {"error": f"{type(exc).__name__}: {exc}", "stage": Stage.FAILED},
+            )
+            raise
         finally:
             store.touch_run(run_id)
 

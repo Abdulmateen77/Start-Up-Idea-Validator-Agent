@@ -309,6 +309,11 @@ class RunState(TypedDict, total=False):
     # Supervisor — parallel-safe append-only log
     events: Annotated[list[AgentEvent], operator.add]
 
+    # Set when a node raised and the run cannot continue. Without this a crashed
+    # run keeps its pending next-node in the checkpoint and reports as "running"
+    # forever, so the UI polls indefinitely instead of showing what broke.
+    error: str | None
+
 
 class LaneTask(TypedDict):
     """

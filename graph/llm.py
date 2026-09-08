@@ -59,7 +59,10 @@ def get_client() -> genai.Client:
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
         raise RuntimeError(
-            "GEMINI_API_KEY is not set. Copy .env.example to .env and fill it in."
+            "GEMINI_API_KEY is not in the environment. Set it in .env — and note "
+            ".env is only read if the entrypoint calls load_dotenv() (api/main.py "
+            "does). A correct .env that is never loaded looks exactly like a missing "
+            "key from here."
         )
     return genai.Client(api_key=api_key)
 
