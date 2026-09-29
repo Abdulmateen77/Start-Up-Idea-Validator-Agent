@@ -1,82 +1,101 @@
 # Idea Validator Agent
 
-Turns a vague idea into a one-page, evidence-backed recommendation — and then makes a
-human decide what to do about it.
+![Python](https://img.shields.io/badge/python-3.13-3776AB?logo=python&logoColor=white)
+![Gemini](https://img.shields.io/badge/Gemini-3.7%20Flash-8E75B2?logo=googlegemini&logoColor=white)
+![LangGraph](https://img.shields.io/badge/LangGraph-orchestration-1C3C3C)
+![Next.js](https://img.shields.io/badge/Next.js-15-000000?logo=nextdotjs&logoColor=white)
+![Tests](https://img.shields.io/badge/tests-52%20passing-brightgreen)
 
-Six agents wired as a graph. A vague sentence goes in, gets sharpened into a
-researchable brief, split into parallel research lanes, attacked by a skeptic that
-kills unsupported claims, synthesized into one page, and handed to a human with a
-menu of next moves. **The model never makes the call.**
+Turns "should we build X?" into a one-page, evidence-backed recommendation — then
+makes a **human** decide what happens next, not the model.
 
-## The pipeline
+A vague sentence goes in. It gets sharpened into a researchable brief, split into
+parallel research lanes, and every claim that comes back is attacked by a Skeptic
+agent whose only job is to kill what doesn't hold up. What survives becomes a
+one-pager. The model never gets to make the call — it hands the human a decision,
+with the evidence and the gaps both left visible.
+
+## Pipeline
 
 ```
-INTAKE ⇄ human        turn a vague idea into a specific niche + audience + one question
+INTAKE ⇄ human       vague idea  →  specific niche + audience + one core question
    ↓
-PLAN                  decompose into research lanes (chosen per-idea, never fixed)
+PLAN                 core question  →  N independent research lanes (never fixed)
    ↓  ⇉ fan out
-RESEARCH ×N           one agent per lane, in parallel, every claim carries a source
+RESEARCH ×N           one agent per lane, in parallel — every claim carries a source
    ↓  ⇉ fan in
-SKEPTIC               attacks every claim; weak ones don't survive; gaps are recorded
+SKEPTIC               attacks every claim; unsupported ones don't survive
    ↓
-MERGE                 survivors become a one-page recommendation, caveats intact
+MERGE                 survivors only → one-page recommendation, caveats intact
    ↓
-HUMAN GATE ⇄ human    tailored next-move menu — the human picks, or sends a lane back
+HUMAN GATE ⇄ human    tailored next-move menu — human picks, or sends a lane back
 ```
 
-A **Supervisor** runs alongside rather than inside the flow, logging every agent's
-I/O, timing, failures and cost.
+A **Supervisor** runs alongside the graph, not inside it — logging every agent's
+input, output, timing, and failures for observability.
 
-Design details live in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md); the per-stage
-SOPs are in [workflows/](workflows/).
+## Why it's built this way
+
+- **Every stage is structured output.** A Pydantic schema in, a validated instance
+  out — never free-text parsed. This is what lets a 6-stage pipeline stay reliable:
+  compounding errors from an LLM guessing at formatting is the usual failure mode
+  for graphs this deep.
+- **Killed claims are structurally excluded, not just prompted away.** Merge never
+  even sees a claim the Skeptic killed — it's filtered out of the prompt before the
+  model runs, so a bad claim can't leak back in by the model "forgetting" an instruction.
+- **Human-in-the-loop stages are two LangGraph nodes each**, not one. `interrupt()`
+  re-executes a node from the top on resume — so if a single node both called the LLM
+  and interrupted, every human reply would burn a duplicate paid call. The LLM work
+  and the interrupt are split apart.
+- **Multi-turn Intake is stateless on this side.** Gemini 3.7's Interactions API
+  holds conversation history server-side via `previous_interaction_id` — no
+  transcript gets resent, no context window creep from a long back-and-forth.
 
 ## Stack
 
-- **Gemini 3.7 Flash** via the `google-genai` **Interactions API**. Every node uses
-  structured output — a Pydantic schema in, a validated instance out. No free-text
-  parsing anywhere.
-- **LangGraph** for orchestration: `Send` for the research fan-out, `interrupt()` for
-  the two human-in-the-loop stages, SQLite checkpointing so a run paused on a human
-  survives a restart.
-- **FastAPI** — see [docs/API_CONTRACT.md](docs/API_CONTRACT.md).
-- **Next.js** frontend. No auth, deliberately.
-- **Firecrawl** for search and scrape.
+| | |
+|---|---|
+| LLM | Gemini 3.7 Flash, via `google-genai`'s Interactions API |
+| Orchestration | LangGraph — `Send` fan-out, `interrupt()`, SQLite checkpointing |
+| Research | Firecrawl (search + scrape) |
+| API | FastAPI — REST + SSE, see [`docs/API_CONTRACT.md`](docs/API_CONTRACT.md) |
+| Frontend | Next.js 15, no auth |
 
-## Setup
+Full design rationale: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md). Per-stage
+specs: [`workflows/`](workflows/).
+
+## Quickstart
 
 ```bash
 py -3.13 -m venv .venv
 .venv/Scripts/python.exe -m pip install -r requirements.txt   # Windows
-# source .venv/bin/activate && pip install -r requirements.txt  # macOS/Linux
+# source .venv/bin/activate && pip install -r requirements.txt   # macOS/Linux
 
-cp .env.example .env      # then fill in GEMINI_API_KEY and FIRECRAWL_API_KEY
-```
+cp .env.example .env   # fill in GEMINI_API_KEY + FIRECRAWL_API_KEY
 
-Secrets go in `.env` and nowhere else. `.env` is gitignored; `.env.example` holds
-empty placeholders and *is* committed.
-
-## Run
-
-```bash
 .venv/Scripts/python.exe -m uvicorn api.main:app --reload
 ```
 
 ```bash
-# start a run — comes back awaiting_human with Intake's first question
 curl -X POST localhost:8000/runs -H 'content-type: application/json' \
      -d '{"raw_idea":"AI bookkeeping for Shopify sellers"}'
+# → awaiting_human, Intake's first question
 
-# answer it (repeat until Intake has a brief — the loop is unbounded by design)
 curl -X POST localhost:8000/runs/$ID/respond -H 'content-type: application/json' \
      -d '{"kind":"intake_answer","message":"solo operators doing $10-100k/mo"}'
+# repeat until Intake has enough to build a brief — the loop is unbounded by design
 
 curl localhost:8000/runs/$ID          # full state
-curl localhost:8000/runs/$ID/stream   # SSE liveness
+curl localhost:8000/runs/$ID/stream   # SSE
 ```
 
-`status` is derived server-side (`running` / `awaiting_human` / `done` / `failed`) so
-no client ever has to infer whether a run is paused. Polling is always correct; SSE is
-a liveness optimisation layered on top.
+`status` (`running` / `awaiting_human` / `done` / `failed`) is derived server-side —
+no client ever infers whether a run is paused. Polling alone is always correct; SSE
+is a liveness layer on top, not a second source of truth.
+
+Frontend: `cd frontend && npm install && npm run dev` — point it at a live backend
+with `NEXT_PUBLIC_API_BASE=http://localhost:8000`, or leave it unset to run against
+its own bundled mocks.
 
 ## Tests
 
@@ -84,14 +103,21 @@ a liveness optimisation layered on top.
 .venv/Scripts/python.exe -m pytest
 ```
 
-All tests run **offline** — no live LLM, no live Firecrawl. Anything that would spend
-money is mocked.
+52 tests, 100% offline — no live LLM or Firecrawl call anywhere in the suite. Every
+paid call is mocked at its own import site, down to full HTTP-level integration
+tests that drive the real FastAPI app through the real compiled graph.
 
-## How this repo is built
+## Status
 
-Four sessions work in parallel in one tree, so correctness rests on disjoint file
-ownership plus two frozen contracts — `graph/state.py` for Python,
-`docs/API_CONTRACT.md` for the frontend. Both are Lead-only; a session needing a field
-that isn't there stops and reports rather than editing.
+Every node is real and wired end to end; the full graph compiles and runs with no
+stubs. Live-fire proven against real Gemini calls at the Intake stage; a complete
+live run through Research → Skeptic → Merge → Human Gate is the next milestone.
 
-See [briefs/RULES.md](briefs/RULES.md) and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+## Built by four sessions in parallel
+
+Contracts first, execution second: [`graph/state.py`](graph/state.py) (Python) and
+[`docs/API_CONTRACT.md`](docs/API_CONTRACT.md) (frontend) were frozen before any
+node was written, so four sessions could build concurrently in one working tree
+without colliding — disjoint file ownership, no shared edits, a session that needs
+something outside its contract stops and reports rather than guessing.
+See [`briefs/RULES.md`](briefs/RULES.md).
