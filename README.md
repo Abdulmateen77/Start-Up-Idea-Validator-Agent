@@ -29,6 +29,8 @@ SKEPTIC               attacks every claim; unsupported ones don't survive
 MERGE                 survivors only → one-page recommendation, caveats intact
    ↓
 HUMAN GATE ⇄ human    tailored next-move menu — human picks, or sends a lane back
+
+
 ```
 
 A **Supervisor** runs alongside the graph, not inside it — logging every agent's
