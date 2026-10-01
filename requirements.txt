@@ -1,9 +1,9 @@
 # Lead-owned. Ask before adding anything here.
 
-# LLM — Gemini 3.7 Flash via the Interactions API.
-# NOT langchain-google-genai: LangGraph orchestrates plain functions, so the wrapper
-# bought nothing and lags a model this new.
-google-genai>=1.0.0
+# LLM — Claude via the official SDK, behind the provider seam in graph/llm.py.
+# Another provider = its SDK here + one file in graph/providers/. No LangChain model
+# wrapper: LangGraph orchestrates plain functions, so a wrapper buys nothing.
+anthropic>=1.0.0
 
 # Orchestration
 langgraph>=0.2.0

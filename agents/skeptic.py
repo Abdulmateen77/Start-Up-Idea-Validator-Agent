@@ -72,7 +72,7 @@ def skeptic_node(state: RunState) -> dict:
         report = generate_structured(
             prompt,
             SkepticReport,
-            thinking_level="high",
+            effort="high",
             system_instruction=SKEPTIC_SYSTEM_INSTRUCTION,
         )
         survived = sum(1 for j in report.judged if j.verdict.value != "killed")

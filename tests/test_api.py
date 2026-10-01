@@ -2,8 +2,8 @@
 Integration tests for the FastAPI layer (api/main.py). OWNERSHIP: test-file only.
 
 Drives the REAL LangGraph pipeline (all real nodes wired via graph/build.py) through
-the REAL HTTP API. Only the LLM (graph.llm.generate_structured / converse_structured,
-patched at each node module's import site) and Firecrawl (tools.firecrawl_client.search
+the REAL HTTP API. Only the LLM (graph.llm.generate_structured, patched at each node
+module's import site) and Firecrawl (tools.firecrawl_client.search
 / scrape, patched at agents.research's import site) are mocked — no live network, no
 live LLM, anywhere.
 
@@ -35,7 +35,6 @@ from agents.human_gate import NextMoveMenu  # noqa: E402
 from agents.intake import IntakeReply  # noqa: E402
 from agents.research import ExtractedClaim, ExtractionResult  # noqa: E402
 from api.main import app  # noqa: E402
-from graph.llm import Generated  # noqa: E402
 from graph.state import (  # noqa: E402
     Claim,
     FindingGroup,
@@ -115,18 +114,10 @@ def _intake_mock(num_questions: int = 2, brief: IdeaBrief = BRIEF) -> MagicMock:
     matching how agents/intake.py's IntakeReply loop behaves for real.
     """
     replies = [
-        Generated(
-            value=IntakeReply(ready=False, question=f"Question {i + 1}?", brief=None),
-            interaction_id=f"interaction-{i + 1}",
-        )
+        IntakeReply(ready=False, question=f"Question {i + 1}?", brief=None)
         for i in range(num_questions)
     ]
-    replies.append(
-        Generated(
-            value=IntakeReply(ready=True, question=None, brief=brief),
-            interaction_id="interaction-final",
-        )
-    )
+    replies.append(IntakeReply(ready=True, question=None, brief=brief))
     return MagicMock(side_effect=replies)
 
 
@@ -244,7 +235,7 @@ def _full_pipeline_patches(num_questions: int = 2):
     """
     search_mock, scrape_mock, extraction_mock = _research_success_mocks()
     stack = ExitStack()
-    stack.enter_context(patch("agents.intake.converse_structured", _intake_mock(num_questions)))
+    stack.enter_context(patch("agents.intake.generate_structured", _intake_mock(num_questions)))
     stack.enter_context(patch("agents.planner.generate_structured", _planner_mock()))
     stack.enter_context(patch("agents.research.search", search_mock))
     stack.enter_context(patch("agents.research.scrape", scrape_mock))
@@ -282,7 +273,7 @@ def _drive_to_gate(client: TestClient, num_questions: int = 2) -> dict:
 
 
 def test_create_run_happy_path(client):
-    with patch("agents.intake.converse_structured", _intake_mock(2)):
+    with patch("agents.intake.generate_structured", _intake_mock(2)):
         resp = client.post("/runs", json={"raw_idea": "Should we build AI bookkeeping for Shopify?"})
 
     assert resp.status_code == 201
@@ -405,7 +396,7 @@ def test_get_run_matches_post_response(client):
 
 
 def test_list_runs_shows_both_newest_first(client):
-    with patch("agents.intake.converse_structured", _intake_mock(2)):
+    with patch("agents.intake.generate_structured", _intake_mock(2)):
         r1 = client.post("/runs", json={"raw_idea": "idea one"}).json()
         r2 = client.post("/runs", json={"raw_idea": "idea two"}).json()
 
@@ -434,7 +425,7 @@ def test_list_runs_shows_both_newest_first(client):
 
 
 def test_respond_with_wrong_kind_returns_422(client):
-    with patch("agents.intake.converse_structured", _intake_mock(2)):
+    with patch("agents.intake.generate_structured", _intake_mock(2)):
         view = client.post("/runs", json={"raw_idea": "bookkeeping thing"}).json()
 
     assert view["awaiting"]["kind"] == "intake_question"
@@ -588,7 +579,7 @@ def test_lane_progress_distinguishes_tool_failure_from_no_evidence(client):
     )
 
     stack = ExitStack()
-    stack.enter_context(patch("agents.intake.converse_structured", _intake_mock(2)))
+    stack.enter_context(patch("agents.intake.generate_structured", _intake_mock(2)))
     stack.enter_context(patch("agents.planner.generate_structured", _planner_mock()))
     stack.enter_context(patch("agents.research.search", MagicMock(side_effect=fake_search)))
     stack.enter_context(patch("agents.research.scrape", MagicMock(side_effect=fake_scrape)))

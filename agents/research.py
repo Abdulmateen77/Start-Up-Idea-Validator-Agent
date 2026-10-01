@@ -157,7 +157,7 @@ def research_node(task: LaneTask) -> dict:
                 if not combined_text.strip():
                     no_evidence_found = True
                 else:
-                    # Step 2: Extract claims using structured LLM call (thinking_level="low")
+                    # Step 2: Extract claims using structured LLM call (effort="low")
                     prompt = f"""
 You are a rigorous research analyst. Extract key empirical claims, facts, and data points answering the research question based on the source text provided below.
 
@@ -180,7 +180,7 @@ Instructions:
                         extraction = generate_structured(
                             prompt,
                             ExtractionResult,
-                            thinking_level="low",
+                            effort="low",
                             system_instruction="Extract accurate claims with correct source attribution.",
                         )
                         for idx, ec in enumerate(extraction.claims, start=1):

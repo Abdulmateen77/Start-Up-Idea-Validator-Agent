@@ -37,7 +37,7 @@ def plan_node(state: RunState) -> dict:
         plan = generate_structured(
             prompt,
             ResearchPlan,
-            thinking_level="medium",
+            effort="medium",
             system_instruction=PLANNER_SYSTEM_INSTRUCTION,
         )
         holder.output_summary = f"produced {len(plan.lanes)} lanes"

@@ -18,11 +18,11 @@ from typing import Any, Literal
 
 from dotenv import load_dotenv
 
-# Load .env BEFORE importing anything that reads configuration, so GEMINI_API_KEY
-# and FIRECRAWL_API_KEY are actually present in os.environ. Without this every run
-# dies at the first node with "GEMINI_API_KEY is not set" even though .env is
-# correct — the file is not read automatically, and the tests never caught it
-# because they mock the LLM and Firecrawl entirely.
+# Load .env BEFORE importing anything that reads configuration, so the LLM
+# provider's API key and FIRECRAWL_API_KEY are actually present in os.environ.
+# Without this every run dies at the first node with a missing-credentials error even
+# though .env is correct — the file is not read automatically, and the tests never
+# caught it because they mock the LLM and Firecrawl entirely.
 #
 # Deliberately done at the entrypoint rather than inside graph/llm.py: tests must
 # stay hermetic and must never silently pick up real credentials from disk.

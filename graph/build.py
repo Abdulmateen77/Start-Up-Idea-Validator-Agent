@@ -11,7 +11,7 @@ Two structural decisions worth understanding before changing anything here.
 the top when it resumes from `interrupt()` — `interrupt()` raises the first time and
 returns the resume value the second. Anything before the interrupt therefore runs
 twice. If a node both called the LLM and interrupted, every human answer would cost a
-duplicate Gemini call. So the LLM work lives in `intake` / `human_gate`, and the
+duplicate paid LLM call. So the LLM work lives in `intake` / `human_gate`, and the
 interrupt lives alone in a cheap `*_wait` node that is safe to re-run.
 
 **Why nodes are injected.** `NodeRegistry` lets the graph be built with fakes, so the

@@ -139,23 +139,33 @@ lane to exist.
 
 ```python
 from graph.state import RunState, IdeaBrief, ResearchLane, ...  # all contracts
-from graph.llm import generate_structured                        # single-shot call
-from graph.llm import converse_structured                        # multi-turn (Intake only)
+from graph.llm import generate_structured                        # the only LLM entrypoint
 ```
 
-- **One LLM client.** Do not construct `genai.Client` yourself.
-- **Structured output always.** `generate_structured(prompt, SomeModel)` returns a
-  validated instance. No free-text parsing, no regex, no `json.loads` on a raw reply.
-- **Gemini 3.7 Flash via the Interactions API.** `generate_content` is legacy;
-  `temperature`/`top_p`/`top_k` are removed — use `thinking_level`
-  (`"low"|"medium"|"high"`). Response schemas may not use unions except `Optional`.
+- **One LLM entrypoint, no vendor SDK in a node.** Never import `anthropic` (or any
+  other provider SDK) outside `graph/providers/`. Which vendor answers is
+  configuration — `LLM_PROVIDER`, `LLM_MODEL`, `LLM_MAX_TOKENS` — not code.
+- **Structured output always.** `generate_structured(prompt, SomeModel, effort=...)`
+  returns a validated instance. No free-text parsing, no regex, no `json.loads` on a
+  raw reply. Failures raise typed `LLMError`s (refusal / truncation / empty), never
+  an empty result.
+- **`effort` is the provider-neutral reasoning dial** (`"low"|"medium"|"high"`): `low`
+  for mechanical extraction, `medium` by default, `high` for adversarial or synthesis
+  work (Skeptic, Merge, Human Gate). Each provider maps it onto its own mechanism.
+- **Multi-turn is the caller's job.** Nothing assumes a provider keeps conversation
+  state; Intake renders its transcript into the prompt on every call.
+- **Keep response schemas simple** — no unions beyond `Optional`, no recursion, no
+  correctness that depends on numeric/length constraints. That is the lowest common
+  denominator every structured-output implementation handles.
+- **Adding a provider** = one file in `graph/providers/` implementing `LLMProvider`
+  (`graph/providers/base.py`) + one `register_provider(...)` call. No node changes.
 - **One logging helper** (`tools/run_logger.py`, Hermes builds it). Once it exists,
   every node uses it to build its `AgentEvent`.
 
 ## Tech stack
 
 Python 3.11+ · FastAPI · LangGraph (`StateGraph`, `Send`, `interrupt`, `SqliteSaver`)
-· Gemini via `langchain-google-genai` · Firecrawl for search + scrape · SQLite ·
+· Claude via a provider-agnostic LLM layer (`graph/llm.py`) · Firecrawl for search + scrape · SQLite ·
 Next.js frontend (phase 2, no auth).
 
 ## Build phases

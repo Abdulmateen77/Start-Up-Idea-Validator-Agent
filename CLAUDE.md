@@ -60,15 +60,24 @@ Decided (2026-08-22):
     calls — those go straight through the model client. LangChain is only pulled
     in where LangGraph's prebuilt agent helpers need a LangChain-wrapped model (e.g.
     a Research lane agent that loops on tool calls itself).
-- **LLM: Gemini 3.7 Flash** (`gemini-3.7-flash`, GA 2026-08-13) via the
-  **`google-genai` SDK's Interactions API** (`client.interactions.create`), wrapped in
-  `graph/llm.py`. Key: `GEMINI_API_KEY`. All nodes use structured output (Pydantic
-  schema → validated instance), never free-text parsing.
-  - LangChain is **not** used as a model wrapper. LangGraph orchestrates plain Python
-    functions, so the extra layer bought nothing and lagged a model this new.
-  - 3.7 removes `temperature`/`top_p`/`top_k`; reasoning effort is `thinking_level`
-    (`"low"|"medium"|"high"`). Multi-turn is server-side via `previous_interaction_id`.
-  - Response schemas may not contain union types other than `Optional`.
+- **LLM: model-agnostic, Claude by default** (`claude-opus-5-5` via the official
+  `anthropic` SDK). Nodes never touch a vendor SDK — they call one function,
+  `graph/llm.py::generate_structured(prompt, Schema, effort=...)`, which returns a
+  validated Pydantic instance (never free-text parsing). Which vendor answers is
+  configuration: `LLM_PROVIDER`, `LLM_MODEL`, `LLM_MAX_TOKENS`. Key: `ANTHROPIC_API_KEY`.
+  - The seam is `graph/providers/base.py::LLMProvider`: one method,
+    `complete_structured(...)`. Adding a provider = one file in `graph/providers/` +
+    one `register_provider(...)` call; no node changes. Only Anthropic exists today.
+  - `effort` (`"low"|"medium"|"high"`) is the provider-neutral reasoning dial; each
+    provider maps it onto its own mechanism.
+  - Multi-turn is the caller's job (Intake renders its transcript into the prompt), so
+    nothing assumes a provider keeps conversation state server-side.
+  - Keep response schemas simple — no unions beyond `Optional`, no recursion — the
+    lowest common denominator across structured-output implementations.
+  - Failures are typed (`LLMRefusalError`, `LLMTruncatedError`, `LLMEmptyResponseError`)
+    and surface as a failed run with the reason, never an empty result.
+  - LangChain is **not** used as a model wrapper; LangGraph orchestrates plain Python
+    functions, so the extra layer bought nothing.
 - **Firecrawl** — web search + scrape/extract tool for the Research lanes. Chosen
   over Tavily: same "give an LLM agent clean, citation-ready content" niche, but
   Firecrawl also covers full-page scrape/crawl in one tool, reducing the need for a

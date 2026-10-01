@@ -1,155 +1,124 @@
 """
-Shared Gemini client. Every node and tool that needs an LLM imports from here.
+The one LLM entrypoint. OWNERSHIP: Lead only.
 
-OWNERSHIP: Lead only. Do NOT construct your own genai.Client — one factory means one
-place to change models, thinking level, retries, and cost tracking.
+Every node imports `generate_structured` from here and nothing else. Which vendor
+answers is a configuration decision, not a code decision:
 
-Model: gemini-3.7-flash (GA 2026-08-13) via the google-genai SDK's **Interactions
-API** (`client.interactions.create`). Notes that cost real debugging time:
+    LLM_PROVIDER   which provider to use                    (default: anthropic)
+    LLM_MODEL      model id; omitted = provider's default   (anthropic: claude-opus-5-5)
+    LLM_MAX_TOKENS output ceiling per call                  (default: 16000)
 
-  * `generate_content` is now the LEGACY path. We use Interactions.
-  * `temperature`, `top_p`, `top_k`, `candidate_count` are REMOVED in 3.7. Passing
-    them is an error, not a no-op. Reasoning effort is now `thinking_level`:
-    "low" | "medium" | "high" (default "medium").
-  * Multi-turn is server-side via `previous_interaction_id` — you do NOT resend the
-    transcript, and prefilled model turns are no longer supported.
-  * Structured output goes through `response_format`, and Gemini rejects union types
-    other than Optional. Keep response schemas free of `A | B`.
-
-Usage — single-shot (Planner, Skeptic, Merge, Research):
+Usage in a node:
 
     from graph.llm import generate_structured
-    plan = generate_structured(prompt, ResearchPlan)
 
-Usage — multi-turn (Intake only):
+    plan = generate_structured(prompt, ResearchPlan, effort="medium")
 
-    from graph.llm import converse_structured
-    turn = converse_structured(prompt, IntakeReply, previous_interaction_id=prev)
-    turn.value, turn.interaction_id
+Rules for callers:
+  * Always pass a Pydantic schema. Never parse free text.
+  * `effort` is the provider-neutral reasoning dial: "low" for mechanical
+    extraction, "medium" by default, "high" for adversarial or synthesis work.
+  * Keep response schemas simple — no unions beyond Optional, no recursion, no
+    reliance on numeric/length constraints for correctness. That is the lowest
+    common denominator that every structured-output implementation handles.
+  * Multi-turn is the CALLER's job: render the transcript into the prompt. Providers
+    differ on whether history lives server-side, so nothing here assumes it does.
+
+Adding a provider = one new file in graph/providers/ implementing `LLMProvider`
+(see base.py), plus one `register_provider(...)` call. No node changes.
 """
 
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
-from functools import lru_cache
-from typing import Generic, Literal, TypeVar
+from typing import Callable
 
-from google import genai
-from pydantic import BaseModel
+from graph.providers.base import (
+    Effort,
+    LLMEmptyResponseError,
+    LLMError,
+    LLMProvider,
+    LLMRefusalError,
+    LLMTruncatedError,
+    T,
+)
 
-T = TypeVar("T", bound=BaseModel)
+__all__ = [
+    "Effort",
+    "LLMEmptyResponseError",
+    "LLMError",
+    "LLMProvider",
+    "LLMRefusalError",
+    "LLMTruncatedError",
+    "available_providers",
+    "generate_structured",
+    "get_provider",
+    "register_provider",
+    "reset_provider_cache",
+]
 
-ThinkingLevel = Literal["low", "medium", "high"]
-
-DEFAULT_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.7-flash")
-
-
-@dataclass(slots=True)
-class Generated(Generic[T]):
-    """A parsed response plus the handle needed to continue the conversation."""
-
-    value: T
-    interaction_id: str | None
+DEFAULT_PROVIDER = "anthropic"
+DEFAULT_MAX_TOKENS = 16000
 
 
-@lru_cache(maxsize=1)
-def get_client() -> genai.Client:
-    """The one client. Cached — constructing per call wastes connection setup."""
-    api_key = os.getenv("GEMINI_API_KEY")
-    if not api_key:
-        raise RuntimeError(
-            "GEMINI_API_KEY is not in the environment. Set it in .env — and note "
-            ".env is only read if the entrypoint calls load_dotenv() (api/main.py "
-            "does). A correct .env that is never loaded looks exactly like a missing "
-            "key from here."
+def _anthropic() -> LLMProvider:
+    # Imported lazily so that selecting a different provider never requires the
+    # anthropic SDK to be installed (and vice versa for future providers).
+    from graph.providers.anthropic_provider import AnthropicProvider
+
+    return AnthropicProvider()
+
+
+_FACTORIES: dict[str, Callable[[], LLMProvider]] = {"anthropic": _anthropic}
+_INSTANCES: dict[str, LLMProvider] = {}
+
+
+def register_provider(name: str, factory: Callable[[], LLMProvider]) -> None:
+    """Make a provider selectable via LLM_PROVIDER. Replaces any existing entry."""
+    _FACTORIES[name] = factory
+    _INSTANCES.pop(name, None)
+
+
+def available_providers() -> list[str]:
+    return sorted(_FACTORIES)
+
+
+def reset_provider_cache() -> None:
+    """Drop cached provider instances (tests, or after changing env at runtime)."""
+    _INSTANCES.clear()
+
+
+def get_provider() -> LLMProvider:
+    """The configured provider, constructed once and reused."""
+    name = os.getenv("LLM_PROVIDER", DEFAULT_PROVIDER).strip().lower()
+    if name not in _FACTORIES:
+        raise ValueError(
+            f"Unknown LLM_PROVIDER {name!r}. Available: {', '.join(available_providers())}."
         )
-    return genai.Client(api_key=api_key)
-
-
-def _create(
-    prompt: str,
-    schema: type[T],
-    *,
-    thinking_level: ThinkingLevel,
-    system_instruction: str | None,
-    previous_interaction_id: str | None,
-    model: str,
-):
-    # System instructions are folded into the prompt separated by a blank line —
-    # 3.7 treats inline instructions this way, and it keeps us off a parameter whose
-    # Interactions-API spelling isn't nailed down yet.
-    text = f"{system_instruction}\n\n{prompt}" if system_instruction else prompt
-
-    kwargs = {
-        "model": model,
-        "input": text,
-        "generation_config": {"thinking_level": thinking_level},
-        "response_format": {
-            "type": "text",
-            "mime_type": "application/json",
-            "schema": schema.model_json_schema(),
-        },
-    }
-    if previous_interaction_id:
-        kwargs["previous_interaction_id"] = previous_interaction_id
-
-    return get_client().interactions.create(**kwargs)
+    if name not in _INSTANCES:
+        _INSTANCES[name] = _FACTORIES[name]()
+    return _INSTANCES[name]
 
 
 def generate_structured(
     prompt: str,
     schema: type[T],
     *,
-    thinking_level: ThinkingLevel = "medium",
+    effort: Effort = "medium",
     system_instruction: str | None = None,
-    model: str = DEFAULT_MODEL,
+    model: str | None = None,
+    max_tokens: int | None = None,
 ) -> T:
     """
-    Single-shot structured call. Returns a validated instance of `schema`.
-
-    Use "high" thinking for adversarial or synthesis work (Skeptic, Merge) and "low"
-    for mechanical extraction. Raises ValueError if the model returns nothing.
+    Single structured call. Returns a validated instance of `schema`, or raises an
+    `LLMError` subclass (`LLMRefusalError`, `LLMTruncatedError`,
+    `LLMEmptyResponseError`) — never an empty or half-parsed result.
     """
-    interaction = _create(
-        prompt,
-        schema,
-        thinking_level=thinking_level,
-        system_instruction=system_instruction,
-        previous_interaction_id=None,
-        model=model,
-    )
-    if not interaction.output_text:
-        raise ValueError(f"Gemini returned an empty response for {schema.__name__}")
-    return schema.model_validate_json(interaction.output_text)
-
-
-def converse_structured(
-    prompt: str,
-    schema: type[T],
-    *,
-    previous_interaction_id: str | None = None,
-    thinking_level: ThinkingLevel = "medium",
-    system_instruction: str | None = None,
-    model: str = DEFAULT_MODEL,
-) -> Generated[T]:
-    """
-    Multi-turn structured call — Intake only.
-
-    Pass the previous turn's `interaction_id` to continue; history lives server-side,
-    so do not resend the transcript.
-    """
-    interaction = _create(
-        prompt,
-        schema,
-        thinking_level=thinking_level,
-        system_instruction=system_instruction,
-        previous_interaction_id=previous_interaction_id,
-        model=model,
-    )
-    if not interaction.output_text:
-        raise ValueError(f"Gemini returned an empty response for {schema.__name__}")
-    return Generated(
-        value=schema.model_validate_json(interaction.output_text),
-        interaction_id=getattr(interaction, "id", None),
+    return get_provider().complete_structured(
+        prompt=prompt,
+        schema=schema,
+        system=system_instruction,
+        effort=effort,
+        model=model or os.getenv("LLM_MODEL") or None,
+        max_tokens=max_tokens or int(os.getenv("LLM_MAX_TOKENS", DEFAULT_MAX_TOKENS)),
     )

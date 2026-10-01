@@ -65,12 +65,19 @@ result = json.loads(some_raw_model_reply)                    # ❌
 
 No regex over model output. No free-text parsing. No "the model usually returns JSON."
 
-Gemini 3.7 specifics that will bite you if ignored:
+The LLM layer is provider-agnostic, and these rules keep it that way:
 
-- **`temperature` / `top_p` / `top_k` are removed in 3.7.** Passing them errors. Use
-  `thinking_level="low"|"medium"|"high"` instead — that's the reasoning-effort dial.
-- **Response schemas may not contain union types** other than `Optional`. No `A | B`.
-- Do not build your own `genai.Client`. Import from `graph.llm`.
+- **`effort="low"|"medium"|"high"` is the reasoning dial** — the only tuning knob a
+  node gets. Never pass `temperature` / `top_p` / `top_k` or any vendor parameter;
+  current models reject them and `generate_structured` has no place to put them.
+- **Never import a vendor SDK** (`anthropic`, or any other) outside
+  `graph/providers/`. A node that does is a node that can't be moved to another model.
+- **Keep response schemas simple:** no union types beyond `Optional`, no recursive
+  models, and don't rely on numeric/length constraints for correctness.
+- **Multi-turn is your job.** Render the transcript into the prompt; don't assume the
+  provider remembers anything between calls.
+- **Catch `LLMError` only to add context, never to swallow it.** A refusal or a
+  truncated response must fail the run visibly (see rule 5), not become an empty result.
 
 ## 5. Fail loudly
 
@@ -95,7 +102,7 @@ Gemini 3.7 specifics that will bite you if ignored:
   `.env.example` holds empty placeholders only.
 - Read config with `os.getenv`. Never hardcode a key, not even temporarily.
 - **Do not run anything that burns paid API credits without checking in first.**
-  Firecrawl and Gemini both cost money. Build against mocks; ask before a live run.
+  Firecrawl and the LLM provider both cost money. Build against mocks; ask before a live run.
 
 ## 8. Match the codebase
 

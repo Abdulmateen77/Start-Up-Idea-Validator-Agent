@@ -72,7 +72,7 @@ def human_gate_node(state: RunState) -> dict:
             menu = generate_structured(
                 _prompt(rec),
                 NextMoveMenu,
-                thinking_level="high",
+                effort="high",
                 system_instruction=SYSTEM,
             )
             moves = menu.moves or list(FALLBACK_MOVES)

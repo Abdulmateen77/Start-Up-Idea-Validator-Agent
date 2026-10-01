@@ -81,9 +81,10 @@ return {"lanes": lanes, "stage": Stage.RESEARCH, "events": [event_obj] if event_
 
 Assert `len(result["events"]) == 1` in every one of your tests.
 
-**2. Gemini 3.7 rejects union types in response schemas** — anything other than
-`Optional`. No `A | B` fields. `temperature`/`top_p`/`top_k` are removed too; the
-reasoning dial is `thinking_level`.
+**2. Keep response schemas simple** — no union types beyond `Optional` (no `A | B`
+fields), no recursion. The LLM layer is provider-agnostic, so that is the lowest
+common denominator. There are no sampling params either; the reasoning dial is
+`effort`.
 
 ---
 
@@ -150,7 +151,7 @@ Rules that are easy to get wrong:
 Cross-lane contradiction detection means the prompt needs *all* findings at once —
 don't loop claim-by-claim in isolation.
 
-Use `thinking_level="high"`.
+Use `effort="high"`.
 
 ## Task 3 — `agents/merge.py`
 
@@ -174,7 +175,7 @@ Follow `workflows/05_merge_recommendation.md`. One page, readable in under a min
   middle.
 - **No next-move menu here.** That's Human Gate's job, and it's already built.
 
-Use `thinking_level="high"`.
+Use `effort="high"`.
 
 ## Task 4 — tests
 
@@ -206,7 +207,7 @@ contract compliance**, not model quality. **No test may call a real LLM.**
 ## Ask the Lead before you
 
 - Add or change anything in `graph/state.py` (you may not — report instead).
-- Run a live Gemini call (**costs money**). Build against mocks.
+- Run a live LLM call (**costs money**). Build against mocks.
 - Add a dependency beyond what's in `requirements.txt`.
 - Change a node's signature, or move work between the three stages.
 - `git commit` — don't. The Lead reviews and commits.

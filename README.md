@@ -1,10 +1,10 @@
 # Idea Validator Agent
 
 ![Python](https://img.shields.io/badge/python-3.13-3776AB?logo=python&logoColor=white)
-![Gemini](https://img.shields.io/badge/Gemini-3.7%20Flash-8E75B2?logo=googlegemini&logoColor=white)
+![LLM](https://img.shields.io/badge/LLM-Claude%20%C2%B7%20model--agnostic-D97757?logo=anthropic&logoColor=white)
 ![LangGraph](https://img.shields.io/badge/LangGraph-orchestration-1C3C3C)
 ![Next.js](https://img.shields.io/badge/Next.js-15-000000?logo=nextdotjs&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-52%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/tests-81%20passing-brightgreen)
 
 Turns "should we build X?" into a one-page, evidence-backed recommendation — then
 makes a **human** decide what happens next, not the model.
@@ -49,15 +49,18 @@ input, output, timing, and failures for observability.
   re-executes a node from the top on resume — so if a single node both called the LLM
   and interrupted, every human reply would burn a duplicate paid call. The LLM work
   and the interrupt are split apart.
-- **Multi-turn Intake is stateless on this side.** Gemini 3.7's Interactions API
-  holds conversation history server-side via `previous_interaction_id` — no
-  transcript gets resent, no context window creep from a long back-and-forth.
+- **The LLM is a seam, not a dependency.** Nodes call one function,
+  `generate_structured(prompt, Schema, effort=…)`; which vendor answers is
+  `LLM_PROVIDER` / `LLM_MODEL` in `.env`. Claude is the default today, and adding
+  another provider is one file in [`graph/providers/`](graph/providers/) — no node
+  changes. Intake is a pure function of its transcript for the same reason: nothing
+  assumes the provider remembers the conversation.
 
 ## Stack
 
 | | |
 |---|---|
-| LLM | Gemini 3.7 Flash, via `google-genai`'s Interactions API |
+| LLM | Claude (`claude-opus-5-5` by default) behind a provider-agnostic layer, [`graph/llm.py`](graph/llm.py) |
 | Orchestration | LangGraph — `Send` fan-out, `interrupt()`, SQLite checkpointing |
 | Research | Firecrawl (search + scrape) |
 | API | FastAPI — REST + SSE, see [`docs/API_CONTRACT.md`](docs/API_CONTRACT.md) |
@@ -73,7 +76,7 @@ py -3.13 -m venv .venv
 .venv/Scripts/python.exe -m pip install -r requirements.txt   # Windows
 # source .venv/bin/activate && pip install -r requirements.txt   # macOS/Linux
 
-cp .env.example .env   # fill in GEMINI_API_KEY + FIRECRAWL_API_KEY
+cp .env.example .env   # fill in ANTHROPIC_API_KEY + FIRECRAWL_API_KEY
 
 .venv/Scripts/python.exe -m uvicorn api.main:app --reload
 ```
@@ -105,15 +108,15 @@ its own bundled mocks.
 .venv/Scripts/python.exe -m pytest
 ```
 
-52 tests, 100% offline — no live LLM or Firecrawl call anywhere in the suite. Every
+81 tests, 100% offline — no live LLM or Firecrawl call anywhere in the suite. Every
 paid call is mocked at its own import site, down to full HTTP-level integration
 tests that drive the real FastAPI app through the real compiled graph.
 
 ## Status
 
 Every node is real and wired end to end; the full graph compiles and runs with no
-stubs. Live-fire proven against real Gemini calls at the Intake stage; a complete
-live run through Research → Skeptic → Merge → Human Gate is the next milestone.
+stubs. Everything is covered offline; the first live run on the Claude provider,
+end to end through Research → Skeptic → Merge → Human Gate, is the next milestone.
 
 ## Built by four sessions in parallel
 

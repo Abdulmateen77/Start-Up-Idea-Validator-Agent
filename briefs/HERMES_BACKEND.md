@@ -157,7 +157,7 @@ Follow `workflows/03_research_lane.md` exactly. Specifically:
    are Merge's job, after Skeptic filters.
 
 Use `generate_structured(prompt, SomeSchema)` from `graph.llm` for turning scraped
-text into `Claim` objects — `thinking_level="low"` is right for extraction. Never
+text into `Claim` objects — `effort="low"` is right for extraction. Never
 parse free text.
 
 ## Task 6 — tests
@@ -190,5 +190,5 @@ parse free text.
 ## Ask the Lead before you
 
 - Add or change anything in `graph/state.py` (you may not — report instead).
-- Run a live Firecrawl or Gemini call (**costs money**).
+- Run a live Firecrawl or LLM call (**costs money**).
 - Add a dependency beyond what's already in `requirements.txt`.

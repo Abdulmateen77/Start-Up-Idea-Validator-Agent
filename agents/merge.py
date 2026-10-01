@@ -85,7 +85,7 @@ def merge_node(state: RunState) -> dict:
         recommendation = generate_structured(
             prompt,
             Recommendation,
-            thinking_level="high",
+            effort="high",
             system_instruction=MERGE_SYSTEM_INSTRUCTION,
         )
         holder.output_summary = (

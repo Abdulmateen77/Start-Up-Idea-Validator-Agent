@@ -7,9 +7,11 @@ This node does the *reasoning* half of Intake: given the conversation so far, ei
 produce a brief or ask exactly one more question. The *waiting* half is
 `intake_wait_node` in graph/build.py — see the comment there for why they're split.
 
-Multi-turn state lives on Gemini's side. We pass `previous_interaction_id` and the
-model still has the thread; we do not resend the transcript. `intake_turns` is kept
-purely so the UI can render the conversation.
+Intake is a pure function of (raw_idea, intake_turns). Each call renders the whole
+transcript into one prompt, so nothing depends on the LLM provider remembering the
+conversation. That is deliberate: providers differ on whether history lives
+server-side, and a design that assumes it does cannot be moved to another provider.
+The transcript is short (capped at MAX_QUESTIONS), so resending it is cheap.
 """
 
 from __future__ import annotations
@@ -17,7 +19,7 @@ from __future__ import annotations
 from pydantic import BaseModel, Field
 
 from graph.events import timed_event
-from graph.llm import converse_structured
+from graph.llm import generate_structured
 from graph.state import IdeaBrief, IntakeTurn, RunState, Stage
 
 SYSTEM = """\
@@ -38,6 +40,7 @@ anything — confirming a brief back to the human is not a reason to burn a turn
   - If the human has stayed vague across two or more answers, STOP asking open \
 questions. Offer 2-3 concrete candidate niches/audiences and let them pick. Never \
 invent a niche for them.
+  - Never repeat a question that already appears in the conversation so far.
   - If this is not really a build/no-build decision (it's a feature request, or a \
 research question with no product behind it), set concern and explain why. The rest \
 of the pipeline assumes a build decision at the end.
@@ -62,47 +65,49 @@ class IntakeReply(BaseModel):
     )
 
 
+def build_prompt(raw_idea: str, turns: list[IntakeTurn]) -> str:
+    """Render the full conversation so far into one self-contained prompt."""
+    parts = [f"The human's raw idea:\n\n{raw_idea}"]
+
+    if turns:
+        transcript = "\n".join(
+            f"{'Intake' if t.role == 'agent' else 'Human'}: {t.content}" for t in turns
+        )
+        parts.append(f"Conversation so far:\n\n{transcript}")
+
+    # A human who won't converge shouldn't loop forever. Force a decision.
+    if _questions_asked(turns) >= MAX_QUESTIONS:
+        parts.append(
+            "This conversation has run long. Do not ask another question. Produce "
+            "the best brief you can from what you have and mark it ready, narrowing "
+            "to the most plausible specific niche and audience."
+        )
+    else:
+        parts.append("Either mark the brief ready, or ask the single next question.")
+
+    return "\n\n".join(parts)
+
+
 def intake_node(state: RunState) -> dict:
     """
-    Reads:  raw_idea, intake_turns, intake_interaction_id
+    Reads:  raw_idea, intake_turns
     Returns: either {brief, stage} when done, or {intake_turns} with a new question.
     """
     run_id = state.get("run_id", "")
     turns: list[IntakeTurn] = list(state.get("intake_turns") or [])
     raw_idea = state.get("raw_idea", "")
-    prev_id = state.get("intake_interaction_id")
 
     with timed_event(run_id, "intake", Stage.INTAKE, raw_idea) as ev:
-        # First turn sends the idea; later turns send only the newest human answer,
-        # because Gemini still holds the thread behind previous_interaction_id.
-        if prev_id and turns and turns[-1].role == "human":
-            prompt = turns[-1].content
-        else:
-            prompt = f"The human's raw idea:\n\n{raw_idea}"
-
-        # A human who won't converge shouldn't loop forever. Force a decision.
-        if _questions_asked(turns) >= MAX_QUESTIONS:
-            prompt += (
-                "\n\nThis conversation has run long. Do not ask another question. "
-                "Produce the best brief you can from what you have and mark it ready, "
-                "narrowing to the most plausible specific niche and audience."
-            )
-
-        reply = converse_structured(
-            prompt,
+        answer = generate_structured(
+            build_prompt(raw_idea, turns),
             IntakeReply,
-            previous_interaction_id=prev_id,
+            effort="medium",
             system_instruction=SYSTEM,
         )
-        answer, interaction_id = reply.value, reply.interaction_id
 
         if answer.ready and answer.brief:
             ev["output_summary"] = f"brief ready: {answer.brief.niche}"
-            result = {
-                "brief": answer.brief,
-                "stage": Stage.PLAN,
-                "intake_interaction_id": interaction_id,
-            }
+            result = {"brief": answer.brief, "stage": Stage.PLAN}
         else:
             # A concern still needs a human reply, so it rides out as the question
             # rather than silently stalling the run.
@@ -113,7 +118,6 @@ def intake_node(state: RunState) -> dict:
             result = {
                 "intake_turns": [*turns, IntakeTurn(role="agent", content=question)],
                 "stage": Stage.INTAKE,
-                "intake_interaction_id": interaction_id,
             }
 
     # The event is only finalised once timed_event's block exits.
