@@ -18,6 +18,8 @@ with the evidence and the gaps both left visible.
 ## Pipeline
 
 ```
+
+
 INTAKE ⇄ human       vague idea  →  specific niche + audience + one core question
    ↓
 PLAN                 core question  →  N independent research lanes (never fixed)
